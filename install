@@ -1,39 +1,75 @@
 #!/bin/env php 
 <?php 
-$frameworks[1]['laravel'] = 'laravel/laravel';
-$frameworks[2]['silverstripe'] = 'silverstripe/installer';
 
-foreach ($frameworks as $i => $fw) {
-    echo "[".($i)."] ".(key($fw)) . "\r\n";
-}
-echo "Enter the for the framework above: ";
-$handle = fopen ("php://stdin","r");
-$framework = current($frameworks[fgets($handle)]);
-print_r($framework);
+function InstallFramework($framework)
+{
+    echo "installing $framework software...\r\n";
+    !file_exists("vendor") or shell_exec("rm -rf vendor");
+    shell_exec("composer require $framework");
 
-echo "installing $framework software...\n";
-
-if(!file_exists("server/app")){
-    echo "...Laravel...\n";
-    file_exists("vendor/$framework/") or shell_exec("composer require $framework");
-    echo "..Server...\n";
+    echo "..Removing and reinstalling server code...\n";
     !file_exists("server") or shell_exec("rm -rf server");
     shell_exec("mv vendor/$framework/ ./server ");
-    echo "...Public...\n";
+
+    echo "..Removing and reinstalling public code...\n";
     !file_exists("public") || shell_exec("rm -rf public");
     shell_exec("mv server/public ./ ");
-    echo "...Client...\n";
+
+    echo "..Removing and reinstalling client code...\n";
     !file_exists("client") || shell_exec("rm -rf client");
     shell_exec("mv server/resources/ ./client ");
 
-    shell_exec("rm -rf $framework/{*.,.,}*");
-    shell_exec("composer replace $framework");
-    shell_exec("composer require laravel/framework");
+    echo "..Cleaning up installation files..\n";
+    shell_exec("rm -rf vendor/$framework/{*.,.,}*");
+}
 
-    $index = "public/index.php";
-    
-    file_put_contents($index, str_replace(
-        __DIR__."/../bootstrap/app.php",
-        __DIR__."/../server/bootstrap/app.php",
-        file_get_contents($index)));
-} 
+function ReplaceContent($page)
+{
+    file_put_contents($page, str_replace(
+        ['/bootstrap/', '/vendor/'],
+        ["/server/bootstrap/", '/../vendor/'],
+        file_get_contents($page)
+    ));    
+}
+
+function InitiateWebsite($port)
+{
+    shell_exec("composer dump-autoload");
+    shell_exec("cp server/.env.example server/.env");
+    shell_exec("cd server/ && php artisan key:generate");
+    echo "Opening up " . ($site = "127.0.0.1:$port") . "\r\n...";
+    shell_exec("php -S $site -t public");
+    shell_exec("start \"\" http://$site");
+}
+
+$frameworks[1]['laravel'] = 'laravel/laravel';
+$frameworks[2]['silverstripe'] = 'silverstripe/installer';
+echo "Please select the framework you want to install from this list:\r\n";
+$framework = [];
+foreach ($frameworks as $i => $fw) {
+    echo "[".($i)."] ".(key($fw)) . "\r\n";
+    $framework[$i] = current($fw);
+}
+echo "Enter the for the framework above: ";
+$handle = fopen ("php://stdin","r");
+$frame = (int)trim(fgets($handle));
+fclose($handle);
+
+
+// $INSTALLED = file_exists("server/app");
+if($INSTALLED = file_exists("server/app")){
+    echo "The system is already installed, do you wnat to reinstall?\r\n";
+    echo "Hit enter to abort or type, Y or Yes (case-insensitive) to re-install: ";
+    $handle = fopen("php://stdin", "r");
+    $yesno = strtolower(trim(fgets($handle))); 
+    var_dump($yesno);
+    fclose($handle);
+    if($yesno == 'y' || $yesno == 'yes') $INSTALLED = false;
+    else echo "\r\nAborting!\r\n\n";
+}
+if(!$INSTALLED){
+    InstallFramework($framework[$frame]);
+    ReplaceContent(__DIR__ . "/public/index.php");
+    ReplaceContent(__DIR__ . "/server/artisan");
+    InitiateWebsite(mt_rand(1000, 9999));
+}
